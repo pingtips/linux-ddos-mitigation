@@ -43,6 +43,22 @@ What it does:
 - builds its own `pingtips` / `pingtips_drop` chains, so it does not touch existing
   rules
 - whitelists IPs from current login sessions (`w`) so you don't lock yourself out
+- whitelists Cloudflare ranges (see below)
+
+## Behind Cloudflare (important)
+
+If your site is behind Cloudflare, every request reaches the server from a Cloudflare
+IP, not from the real client. A per-IP SYN limit would then count all traffic against
+a few Cloudflare IPs, block them, and take your site down.
+
+To avoid that, the script loads the Cloudflare IPv4 ranges into a `cloudflare_ips`
+set and accepts them before any rate limit. It fetches the live list from
+<https://www.cloudflare.com/ips-v4> and falls back to a built-in copy if there is no
+network or `curl`. Update the built-in list when Cloudflare changes their ranges.
+
+This is IPv4 only, same as the rest of the script. The same idea applies to any
+reverse proxy or CDN in front of you: whitelist its source ranges, or you block your
+own front door.
 
 Add your own IP by hand to be safe:
 
@@ -54,10 +70,11 @@ sudo ipset add whitelist_ips YOUR_IP
 
 Rules in the `pingtips` chain, in order:
 
-1. whitelist → `ACCEPT`
-2. already in `blocked_ips` → `DROP`
-3. per-IP SYN over `10/sec` (burst 50) → offender handling
-4. per-`/24` SYN over `20/sec` (burst 100) → offender handling
+1. admin whitelist → `ACCEPT`
+2. Cloudflare ranges → `ACCEPT`
+3. already in `blocked_ips` → `DROP`
+4. per-IP SYN over `10/sec` (burst 50) → offender handling
+5. per-`/24` SYN over `20/sec` (burst 100) → offender handling
 
 Offender handling (`pingtips_drop`): rate-limited `LOG`, add source to `blocked_ips`
 with TTL, then `DROP`. After that, rule 2 drops the IP directly until it expires.
